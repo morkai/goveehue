@@ -1,0 +1,4 @@
+.idea
+/node_modules
+processes.json
+hue.key

@@ -1,0 +1,8 @@
+{
+  "name": "goveehue",
+  "version": "0.0.0",
+  "description": "HUE <-> Govee controller",
+  "dependencies": {
+    "eventsource": "^2.0.2"
+  }
+}
