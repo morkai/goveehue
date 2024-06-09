@@ -10,7 +10,7 @@ const HUE_LIGHTL_ID = ['d717eaac-06d6-4ab8-aec8-26b9bed04e62', '90b94f3d-5691-4e
 const HUE_BUTTON_ID = 'b9d6fd53-c031-48ce-a736-6b9cf15f143e';
 const HUE_API_KEY = process.env.GOVEEHUE_HUE_KEY;
 const GOVEE_LOCAL_PORT = 4002;
-const GOVEE_REMOTE_ADDR = process.env.HUE_REMOTE_ADDR;
+const GOVEE_REMOTE_ADDR = process.env.GOVEEHUE_GOVEE_HOST;
 const GOVEE_REMOTE_PORT = 4003;
 const GOVEE_MULTICAST_ADDR = '239.255.255.250';
 const GOVEE_MULTICAST_PORT = 4001;
@@ -29,13 +29,12 @@ let onNextGoveeStatus = null;
 const consoleError = console.error;
 const consoleLog = console.log;
 
-console.error = (...args) => consoleError.apply(console, [new Date().toLocaleString(), ...args]);
-console.log = (...args) =>
-{
-  args.unshift(new Date().toLocaleString(), goveeStatus?.onOff ? 'ON ' : 'OFF');
-
-  consoleLog.apply(console, args);
-};
+console.error = (...args) => consoleError.apply(console, [formatDateTime(new Date()), ...args]);
+console.log = (...args) => consoleLog.apply(console, [
+  formatDateTime(new Date()),
+  goveeStatus?.onOff ? 'ON ' : 'OFF',
+  ...args
+]);
 
 main();
 
@@ -52,8 +51,10 @@ function setUpGovee()
 {
   console.log(`Setting up Govee...`);
 
-  return new Promise((resolve, reject) =>
+  return new Promise(async (resolve, reject) =>
   {
+    await tearDownGovee();
+
     goveeSocket = dgram.createSocket('udp4');
 
     goveeSocket.bind(GOVEE_LOCAL_PORT);
@@ -76,12 +77,40 @@ function setUpGovee()
     {
       handleGoveeMessage(JSON.parse(data).msg);
     });
+
+    goveeSocket.watchdog = setInterval(checkGoveeState, 3333);
   });
+}
+
+function tearDownGovee()
+{
+  if (!goveeSocket)
+  {
+    return;
+  }
+
+  return new Promise(resolve =>
+  {
+    goveeSocket.removeAllListeners();
+    goveeSocket.on('error', () => resolve());
+    goveeSocket.close(resolve);
+    goveeSocket = null;
+  });
+}
+
+function checkGoveeState()
+{
+  if (goveeStatus?.ts - Date.now() > 5000)
+  {
+    setUpGovee();
+  }
 }
 
 function setUpHue()
 {
-  console.log('Settip up Hue...');
+  console.log('Setting up Hue...');
+
+  tearDownHue();
 
   hueEventSource = new EventSource(`https://${HUE_REMOTE_ADDR}/eventstream/clip/v2`, {
     headers: {'hue-application-key': HUE_API_KEY},
@@ -117,6 +146,30 @@ function setUpHue()
   {
     console.error(`[HUE] ${err.message}`);
   };
+
+  hueEventSource.watchdog = setInterval(checkHueState, 5000);
+}
+
+function tearDownHue()
+{
+  if (!hueEventSource)
+  {
+    return;
+  }
+
+  clearInterval(hueEventSource.watchdog);
+  hueEventSource.onmessage = null;
+  hueEventSource.onerror = () => {};
+  hueEventSource.close();
+  hueEventSource = null;
+}
+
+function checkHueState()
+{
+  if (hueEventSource?.readyState === 2)
+  {
+    setUpHue();
+  }
 }
 
 async function fetchMotionReport()
@@ -412,7 +465,7 @@ function handleGoveeMessage(msg)
   }
 }
 
-function formatDateTime(date, ms)
+function formatDateTime(date, ms = true)
 {
   if (!date)
   {
