@@ -36,6 +36,14 @@ console.log = (...args) => consoleLog.apply(console, [
   ...args
 ]);
 
+// pm2's @pm2/io registers an unhandledRejection handler that only logs,
+// which leaves the process running in a broken state. Exit so pm2 restarts it.
+process.on('unhandledRejection', err =>
+{
+  console.error(err);
+  process.exit(1);
+});
+
 main();
 
 async function main()
@@ -59,9 +67,21 @@ function setUpGovee()
 
     goveeSocket.bind(GOVEE_LOCAL_PORT);
 
-    goveeSocket.on('listening', async () =>
+    goveeSocket.on('listening', () =>
     {
-      goveeSocket.addMembership(GOVEE_MULTICAST_ADDR);
+      try
+      {
+        goveeSocket.addMembership(GOVEE_MULTICAST_ADDR);
+      }
+      catch (err)
+      {
+        console.log(`[GOVEE] ${err.message}`);
+        setTimeout(setUpGovee, 1000);
+        resolve();
+
+        return;
+      }
+
       requestGoveeStatus();
       resolve();
     });
@@ -91,6 +111,7 @@ function tearDownGovee()
 
   return new Promise(resolve =>
   {
+    clearInterval(goveeSocket.watchdog);
     goveeSocket.removeAllListeners();
     goveeSocket.on('error', () => resolve());
     goveeSocket.close(resolve);
@@ -100,7 +121,7 @@ function tearDownGovee()
 
 function checkGoveeState()
 {
-  if (goveeStatus?.ts - Date.now() > 5000)
+  if (!goveeStatus || Date.now() - goveeStatus.ts > 5000)
   {
     setUpGovee();
   }
