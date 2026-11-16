@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs/promises');
 const util = require('util');
 const dgram = require('dgram');
 const EventSource = require('eventsource');
@@ -8,6 +9,12 @@ const HUE_REMOTE_ADDR = process.env.GOVEEHUE_HUE_HOST;
 const HUE_MOTION_ID = ['cb2c4767-3562-43f4-85d8-cf50dd65adf3', 'b6f76faf-99b5-4682-991e-2cf20345af8a'];
 const HUE_LIGHTL_ID = ['d717eaac-06d6-4ab8-aec8-26b9bed04e62', '90b94f3d-5691-4e07-93b6-602fec9af8cd'];
 const HUE_BUTTON_ID = 'b9d6fd53-c031-48ce-a736-6b9cf15f143e';
+const HUE_TEMP_ID = new Map([
+  ['1c6ce58f-4146-44bd-b254-eaf3204de7c1', 'Outdoor 1 motion'],
+  ['6ce8b522-32cb-45cb-8272-eb954dce67c8', 'Hol dark motion'],
+  ['bff8ab36-d400-4506-b992-b0fd9b48d7aa', 'Lazienka motion'],
+  ['124b6527-7cba-4e12-99fb-98fe32243dc7', 'Darkspot motion']
+]);
 const HUE_API_KEY = process.env.GOVEEHUE_HUE_KEY;
 const GOVEE_LOCAL_PORT = 4002;
 const GOVEE_REMOTE_ADDR = process.env.GOVEEHUE_GOVEE_HOST;
@@ -158,6 +165,10 @@ function setUpHue()
           {
             handleButtonUpdate(update);
           }
+          else if (HUE_TEMP_ID.has(update.id))
+          {
+            handleTempUpdate(update);
+          }
         });
       }
     });
@@ -274,6 +285,24 @@ function handleLightLevelUpdate(data)
   lightLevelReports[i] = newLightLevelReport;
 
   console.log(`Light level ${i}:`, newLightLevelReport);
+}
+
+async function handleTempUpdate(data)
+{
+  console.log(`Temperature [${HUE_TEMP_ID.get(data.id)}]: ${data.temperature.temperature.toFixed(2)}`);
+
+  try
+  {
+    await fs.appendFile('./temperature.log', JSON.stringify({
+      t: new Date(),
+      s: HUE_TEMP_ID.get(data.id).replace(/\s*motion$/i, ''),
+      v: data.temperature.temperature
+    }) + '\n');
+  }
+  catch (err)
+  {
+    console.error('Error writing to temperature log:', err);
+  }
 }
 
 function handleButtonUpdate(data)
