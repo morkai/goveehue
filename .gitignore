@@ -2,3 +2,4 @@
 /node_modules
 processes.json
 hue.key
+/.claude/settings.local.json
